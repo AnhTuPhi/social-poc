@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notification Engine POC</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a35;
+    --panel-2: #1a2347;
+    --text: #e6e8f0;
+    --muted: #9aa3c7;
+    --accent: #6c8cff;
+    --accent-2: #8b5cf6;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --border: #283063;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .topbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar h1 { margin: 0; font-size: 18px; }
+  .topbar a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .container { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .full { grid-column: 1 / -1; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  label { color: var(--muted); font-size: 12px; }
+  input, select, button {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: #5577ff; }
+  button.warn { background: var(--orange); border-color: var(--orange); color: #fff; }
+  button.danger { color: var(--red); }
+  button:hover { border-color: var(--accent); }
+  .metric-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  @media (max-width: 700px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: var(--panel-2); border-radius: 10px; padding: 14px;
+    border: 1px solid var(--border);
+  }
+  .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .stat .value { font-size: 26px; font-weight: 700; margin-top: 6px; font-family: 'SF Mono', Consolas, monospace; }
+  .stat.dedup .value { color: var(--orange); }
+  .stat.batch .value { color: var(--accent); }
+  .stat.sent .value { color: var(--green); }
+  .stat.quiet .value { color: var(--red); }
+  .buffer-item {
+    background: var(--panel-2); border-radius: 8px; padding: 10px 12px;
+    margin-bottom: 8px; border-left: 3px solid var(--orange);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .buffer-item .left { flex: 1; }
+  .buffer-item .key { font-family: 'SF Mono', Consolas, monospace; font-size: 11px; color: var(--muted); }
+  .buffer-item .actors { font-size: 13px; margin-top: 4px; }
+  .buffer-item .count {
+    background: var(--orange); color: #000; padding: 4px 10px;
+    border-radius: 999px; font-size: 12px; font-weight: 700;
+  }
+  .delivery {
+    padding: 10px 12px; background: var(--panel-2);
+    border-radius: 8px; margin-bottom: 8px;
+    border-left: 3px solid var(--green);
+  }
+  .delivery.SUPPRESSED_QUIET_HOURS { border-left-color: var(--red); opacity: .6; }
+  .delivery header { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .delivery .title { font-size: 14px; font-weight: 600; margin-top: 4px; }
+  .delivery .body { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .channel-chip {
+    font-size: 10px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(108,140,255,.2); color: var(--accent);
+    margin-left: 6px; text-transform: uppercase;
+  }
+  .channel-chip.EMAIL { background: rgba(251,146,60,.2); color: var(--orange); }
+  .channel-chip.IN_APP { background: rgba(139,92,246,.2); color: var(--accent-2); }
+  .prefs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .prefs-table td, .prefs-table th { padding: 8px; border-bottom: 1px dashed var(--border); text-align: left; }
+  .prefs-table th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: .5px; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 0; font-size: 13px; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--panel-2); border: 1px solid var(--accent);
+    padding: 12px 16px; border-radius: 8px; font-size: 13px;
+    transition: opacity .3s;
+  }
+  .help { font-size: 12px; color: var(--muted); margin-top: 12px; padding: 10px; background: var(--bg); border-radius: 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>🔔 Notification Engine POC</h1>
+  <a href="/">← back to all POCs</a>
+</div>
+
+<div class="container">
+  <!-- Metrics -->
+  <div class="panel" style="margin-bottom: 20px;">
+    <h2>Live Metrics</h2>
+    <div class="metric-grid">
+      <div class="stat"><div class="label">Events Received</div><div class="value" id="m-events">0</div></div>
+      <div class="stat dedup"><div class="label">Deduped</div><div class="value" id="m-dedup">0</div></div>
+      <div class="stat batch"><div class="label">Batches</div><div class="value" id="m-batch">0</div></div>
+      <div class="stat sent"><div class="label">Sent</div><div class="value" id="m-sent">0</div></div>
+      <div class="stat"><div class="label">Pending in Buffer</div><div class="value" id="m-pending">0</div></div>
+      <div class="stat dedup"><div class="label">Dedup Rate</div><div class="value" id="m-dedup-rate">0%</div></div>
+      <div class="stat batch"><div class="label">Events / Batch</div><div class="value" id="m-batch-eff">0×</div></div>
+      <div class="stat quiet"><div class="label">Quiet-Suppressed</div><div class="value" id="m-quiet">0</div></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Inject -->
+    <div class="panel">
+      <h2>Inject Event</h2>
+      <div class="row">
+        <label>User</label>
+        <select id="target-user">
+          <option value="alice">alice</option>
+          <option value="bob">bob</option>
+          <option value="carol">carol</option>
+        </select>
+        <label>Category</label>
+        <select id="category">
+          <option value="LIKE">LIKE</option>
+          <option value="COMMENT">COMMENT</option>
+          <option value="FOLLOW">FOLLOW</option>
+          <option value="MENTION">MENTION</option>
+          <option value="SYSTEM">SYSTEM</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Actor</label>
+        <input id="actor" value="Frank" />
+        <label>Target ID</label>
+        <input id="targetId" value="post-42" />
+      </div>
+      <div class="row">
+        <button class="primary" onclick="sendOne()">Send one</button>
+        <button class="warn" onclick="burst()">💥 Burst 50 likes (same post)</button>
+        <button onclick="burstFollow()">10 follows in window</button>
+        <button class="danger" onclick="resetAll()">Reset</button>
+      </div>
+      <div class="help">
+        <strong style="color:var(--text)">How dedup works:</strong>
+        same <code>(category, targetId)</code> pair within the user's batch window
+        (default 5s) folds into one notification with an aggregated title like
+        <em>"Frank and 49 others liked your post"</em>. After the window expires, the
+        batch is delivered across the user's enabled channels — unless quiet hours suppress push.
+      </div>
+    </div>
+
+    <!-- Preferences -->
+    <div class="panel">
+      <h2>User Preferences</h2>
+      <table class="prefs-table">
+        <thead>
+          <tr><th>User</th><th>Push</th><th>Email</th><th>In-app</th><th>Quiet</th><th>Window</th></tr>
+        </thead>
+        <tbody id="prefs"></tbody>
+      </table>
+      <div class="help">
+        Quiet hours suppress PUSH only — email and in-app still deliver.
+        Carol has no quiet hours (00:00–00:00) and a wider 10s window — so likes get batched aggressively for her.
+      </div>
+    </div>
+
+    <!-- Buffer -->
+    <div class="panel">
+      <h2>Live Buffer (waiting to flush)</h2>
+      <div id="buffer"><div class="empty">Empty.</div></div>
+    </div>
+
+    <!-- Delivered -->
+    <div class="panel">
+      <h2>Recently Delivered</h2>
+      <div id="delivered"><div class="empty">Nothing delivered yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" style="display:none;"></div>
+
+<script>
+async function sendOne() {
+  const ev = {
+    userId: document.getElementById('target-user').value,
+    category: document.getElementById('category').value,
+    actorId: document.getElementById('actor').value.toLowerCase(),
+    actorName: document.getElementById('actor').value,
+    targetId: document.getElementById('targetId').value,
+    body: 'manual event'
+  };
+  await fetch('/api/notify/event', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ev)
+  });
+  toast(`Ingested 1 event into buffer`);
+  refresh();
+}
+
+async function burst() {
+  const userId = document.getElementById('target-user').value;
+  const res = await fetch(`/api/notify/burst?userId=${userId}&count=50&category=LIKE`, { method: 'POST' });
+  const j = await res.json();
+  toast(`Burst: 50 events → 1 batch via dedup. ${j.note}`);
+  refresh();
+}
+
+async function burstFollow() {
+  const userId = document.getElementById('target-user').value;
+  await fetch(`/api/notify/burst?userId=${userId}&count=10&category=FOLLOW`, { method: 'POST' });
+  toast(`10 follow events ingested.`);
+  refresh();
+}
+
+async function refresh() {
+  await Promise.all([loadMetrics(), loadBuffer(), loadDelivered(), loadPrefs()]);
+}
+
+async function loadMetrics() {
+  const m = await (await fetch('/api/notify/metrics')).json();
+  document.getElementById('m-events').textContent = m.eventsReceived;
+  document.getElementById('m-dedup').textContent = m.deduped;
+  document.getElementById('m-batch').textContent = m.batched;
+  document.getElementById('m-sent').textContent = m.sent;
+  document.getElementById('m-pending').textContent = m.pendingInBuffer;
+  document.getElementById('m-dedup-rate').textContent = (m.dedupRate * 100).toFixed(1) + '%';
+  document.getElementById('m-batch-eff').textContent = m.batchEfficiency.toFixed(1) + '×';
+  document.getElementById('m-quiet').textContent = m.suppressedQuiet;
+}
+
+async function loadBuffer() {
+  const arr = await (await fetch('/api/notify/buffer')).json();
+  const div = document.getElementById('buffer');
+  if (!arr.length) { div.innerHTML = '<div class="empty">Buffer empty — every event has been flushed.</div>'; return; }
+  div.innerHTML = arr.map(b => {
+    const ageMs = Date.now() - new Date(b.firstSeen).getTime();
+    return `
+      <div class="buffer-item">
+        <div class="left">
+          <div class="key">${b.userId} · ${b.dedupKey}</div>
+          <div class="actors">${[...b.actorNames].slice(0, 3).join(', ')}${b.actorNames.length > 3 ? '…' : ''}</div>
+          <div class="key" style="margin-top:2px;">${(ageMs/1000).toFixed(1)}s waiting</div>
+        </div>
+        <div class="count">×${b.count}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadDelivered() {
+  const arr = await (await fetch('/api/notify/delivered?limit=15')).json();
+  const div = document.getElementById('delivered');
+  if (!arr.length) { div.innerHTML = '<div class="empty">Nothing delivered yet.</div>'; return; }
+  div.innerHTML = arr.map(n => `
+    <div class="delivery ${n.status}">
+      <header>
+        <span>${n.userId} · ${n.category} · ×${n.aggregatedCount}</span>
+        <span class="channel-chip ${n.channel}">${n.channel}${n.status === 'SUPPRESSED_QUIET_HOURS' ? ' · suppressed' : ''}</span>
+      </header>
+      <div class="title">${escapeHtml(n.title)}</div>
+      <div class="body">${escapeHtml(n.body)}</div>
+    </div>
+  `).join('');
+}
+
+async function loadPrefs() {
+  const arr = await (await fetch('/api/notify/prefs')).json();
+  const tb = document.getElementById('prefs');
+  tb.innerHTML = arr.map(p => `
+    <tr>
+      <td><strong>${p.userId}</strong></td>
+      <td>${p.pushEnabled ? '✅' : '⛔'}</td>
+      <td>${p.emailEnabled ? '✅' : '⛔'}</td>
+      <td>${p.inAppEnabled ? '✅' : '⛔'}</td>
+      <td>${p.quietStart === p.quietEnd ? 'none' : `${p.quietStart}–${p.quietEnd}`}</td>
+      <td>${p.batchWindowMs}ms</td>
+    </tr>
+  `).join('');
+}
+
+async function resetAll() {
+  if (!confirm('Reset all notifications and metrics?')) return;
+  await fetch('/api/notify/reset', { method: 'POST' });
+  toast('Reset.');
+  refresh();
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.style.opacity = 1;
+  clearTimeout(window._tm);
+  window._tm = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.style.display='none', 300); }, 2400);
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Feed Fan-Out POC</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a35;
+    --panel-2: #1a2347;
+    --text: #e6e8f0;
+    --muted: #9aa3c7;
+    --accent: #6c8cff;
+    --accent-2: #8b5cf6;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --border: #283063;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .topbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar h1 { margin: 0; font-size: 18px; }
+  .topbar a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .container { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr 380px;
+    gap: 20px;
+  }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+  }
+  .user-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px; border-radius: 8px; cursor: pointer; transition: background .12s;
+    border: 1px solid transparent;
+  }
+  .user-row:hover { background: var(--panel-2); }
+  .user-row.active { background: var(--panel-2); border-color: var(--accent); }
+  .user-name { font-size: 14px; }
+  .user-meta { font-size: 11px; color: var(--muted); }
+  .celeb-tag { color: var(--orange); font-size: 10px; margin-left: 6px; }
+  .composer { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  textarea {
+    width: 100%; height: 80px; padding: 10px; resize: vertical;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: inherit; font-size: 14px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, button {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: #5577ff; }
+  button:hover { border-color: var(--accent); }
+  button.danger { color: var(--red); }
+  .feed-item {
+    padding: 12px; border-radius: 8px; background: var(--panel-2); margin-bottom: 8px;
+    border-left: 3px solid var(--accent);
+  }
+  .feed-item.PUSH { border-left-color: var(--green); }
+  .feed-item.PULL { border-left-color: var(--orange); }
+  .feed-item.PULL-celeb { border-left-color: var(--accent-2); }
+  .feed-item header { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .feed-item .body { font-size: 14px; line-height: 1.4; }
+  .source-tag {
+    font-size: 10px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(108,140,255,.15); color: var(--accent);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .metric { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+  .metric:last-child { border: none; }
+  .metric span:first-child { color: var(--muted); font-size: 13px; }
+  .metric span:last-child { font-weight: 600; font-family: 'SF Mono', Consolas, monospace; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--panel-2); border: 1px solid var(--accent);
+    padding: 12px 16px; border-radius: 8px;
+    font-size: 13px; transition: opacity .3s;
+  }
+  .strategy-chip {
+    display: inline-block; font-size: 10px; padding: 2px 6px;
+    border-radius: 4px; margin-left: 6px;
+  }
+  .strategy-chip.PUSH { background: rgba(52,211,153,.18); color: var(--green); }
+  .strategy-chip.PULL { background: rgba(251,146,60,.18); color: var(--orange); }
+  .strategy-chip.HYBRID { background: rgba(139,92,246,.18); color: var(--accent-2); }
+  .explainer {
+    font-size: 12px; color: var(--muted); margin-top: 10px;
+    padding: 10px; background: var(--bg); border-radius: 6px;
+    line-height: 1.5;
+  }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>📰 Feed Fan-Out POC</h1>
+  <a href="/">← back to all POCs</a>
+</div>
+
+<div class="container">
+  <div class="grid">
+    <!-- LEFT: User picker -->
+    <div class="panel">
+      <h2>Users</h2>
+      <div id="users"></div>
+      <div class="explainer">
+        Click a user to set them as the active actor for posting and as the timeline owner for reading.
+        Celebrities (≥10k followers) are flagged.
+      </div>
+    </div>
+
+    <!-- CENTER: Compose + Feed -->
+    <div class="panel">
+      <h2>Compose</h2>
+      <div class="composer">
+        <textarea id="postText" placeholder="What's happening?"></textarea>
+        <div class="row">
+          <label style="color:var(--muted);font-size:12px;">Strategy:</label>
+          <select id="postStrategy">
+            <option value="HYBRID" selected>HYBRID (recommended)</option>
+            <option value="PUSH">PUSH (fan-out on write)</option>
+            <option value="PULL">PULL (fan-out on read)</option>
+          </select>
+          <button class="primary" onclick="doPost()">Post</button>
+          <button onclick="simulate()">Simulate 20 posts</button>
+        </div>
+      </div>
+
+      <h2 style="margin-top: 24px;">Timeline of <span id="readerName">—</span></h2>
+      <div class="row" style="margin-bottom: 12px;">
+        <label style="color:var(--muted);font-size:12px;">Read with:</label>
+        <select id="readStrategy">
+          <option value="HYBRID" selected>HYBRID</option>
+          <option value="PUSH">PUSH (cached only)</option>
+          <option value="PULL">PULL (live merge)</option>
+        </select>
+        <button onclick="loadFeed()">Refresh</button>
+      </div>
+      <div id="feed"><div class="empty">Post something to see it appear here.</div></div>
+    </div>
+
+    <!-- RIGHT: Metrics -->
+    <div class="panel">
+      <h2>Metrics</h2>
+      <div id="metrics"></div>
+      <div style="margin-top: 16px;">
+        <button onclick="resetAll()" class="danger">Reset everything</button>
+      </div>
+      <div class="explainer" style="margin-top: 20px;">
+        <strong style="color:var(--text)">Why hybrid?</strong><br>
+        Push for normal users → fast reads.<br>
+        Pull for celebs → avoid 50M-row write storm.<br>
+        Reader merges precomputed feed + celeb pulls.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" style="display:none;"></div>
+
+<script>
+let users = [];
+let activeUser = null;
+
+async function loadUsers() {
+  const res = await fetch('/api/feed/users');
+  users = await res.json();
+  const div = document.getElementById('users');
+  div.innerHTML = users.slice(0, 20).map(u => `
+    <div class="user-row ${activeUser?.id === u.id ? 'active' : ''}" onclick="selectUser(${u.id})">
+      <div>
+        <div class="user-name">${u.name}</div>
+        <div class="user-meta">${u.followerCount.toLocaleString()} followers ${u.celebrity ? '<span class="celeb-tag">★ CELEB</span>' : ''}</div>
+      </div>
+    </div>
+  `).join('');
+  if (!activeUser && users.length) selectUser(users.find(u => !u.celebrity)?.id || users[0].id);
+}
+
+function selectUser(id) {
+  activeUser = users.find(u => u.id === id);
+  document.getElementById('readerName').textContent = activeUser.name;
+  loadUsers();
+  loadFeed();
+}
+
+async function doPost() {
+  if (!activeUser) return;
+  const text = document.getElementById('postText').value.trim();
+  if (!text) { toast('Type something first', 'warn'); return; }
+  const strategy = document.getElementById('postStrategy').value;
+  const res = await fetch('/api/feed/post?strategy=' + strategy, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authorId: activeUser.id, text })
+  });
+  const j = await res.json();
+  toast(`Posted (${j.strategyUsed}) — ${j.fanoutWrites} fan-out writes, ${j.latencyMicros}µs`);
+  document.getElementById('postText').value = '';
+  loadFeed();
+  loadMetrics();
+}
+
+async function loadFeed() {
+  if (!activeUser) return;
+  const strategy = document.getElementById('readStrategy').value;
+  const res = await fetch(`/api/feed/timeline/${activeUser.id}?strategy=${strategy}`);
+  const j = await res.json();
+  const div = document.getElementById('feed');
+  if (!j.items.length) {
+    div.innerHTML = `<div class="empty">No posts yet for ${activeUser.name}. ${strategy === 'PUSH' && activeUser.celebrity ? '(Celebrity feeds need PULL or HYBRID — push only stores normal-author posts.)' : ''}</div>`;
+  } else {
+    div.innerHTML = j.items.map(item => `
+      <div class="feed-item ${item.source}">
+        <header>
+          <span>${item.authorName}</span>
+          <span><span class="source-tag">${item.source}</span> · ${new Date(item.createdAt).toLocaleTimeString()}</span>
+        </header>
+        <div class="body">${escapeHtml(item.text)}</div>
+      </div>
+    `).join('');
+  }
+  toast(`Timeline: ${j.items.length} items, ${j.merges} merges, ${j.latencyMicros}µs`);
+}
+
+async function loadMetrics() {
+  const res = await fetch('/api/feed/metrics');
+  const m = await res.json();
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric"><span>Total posts</span><span>${m.totalPosts}</span></div>
+    <div class="metric"><span>· normal authors</span><span>${m.normalPosts}</span></div>
+    <div class="metric"><span>· celeb authors</span><span>${m.celebrityPosts}</span></div>
+    <div class="metric"><span>Timeline reads</span><span>${m.totalFeedReads}</span></div>
+    <div class="metric"><span>Push writes total</span><span>${m.pushWrites.toLocaleString()}</span></div>
+    <div class="metric"><span>Pull merges total</span><span>${m.pullMerges}</span></div>
+    <div class="metric"><span>Avg PUSH latency</span><span>${m.avgPushLatencyMs.toFixed(2)} ms</span></div>
+    <div class="metric"><span>Avg PULL latency</span><span>${m.avgPullLatencyMs.toFixed(2)} ms</span></div>
+    <div class="metric"><span>Avg HYBRID latency</span><span>${m.avgHybridLatencyMs.toFixed(2)} ms</span></div>
+    <div class="metric"><span>Celebrity threshold</span><span>${m.celebrityThreshold.toLocaleString()}</span></div>
+  `;
+}
+
+async function simulate() {
+  const res = await fetch('/api/feed/simulate?posts=20', { method: 'POST' });
+  const j = await res.json();
+  toast(`Simulated ${j.postsCreated} posts (${j.normalPosts} normal + ${j.celebrityPosts} celeb), ${j.totalHybridFanoutWrites} fan-out writes`);
+  loadFeed();
+  loadMetrics();
+}
+
+async function resetAll() {
+  if (!confirm('Reset all users, posts, and metrics?')) return;
+  await fetch('/api/feed/reset', { method: 'POST' });
+  activeUser = null;
+  loadUsers();
+  loadMetrics();
+  document.getElementById('feed').innerHTML = '<div class="empty">Reset complete.</div>';
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.style.opacity = 1;
+  clearTimeout(window._toastTm);
+  window._toastTm = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.style.display = 'none', 300); }, 2200);
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadUsers();
+loadMetrics();
+setInterval(loadMetrics, 3000);
+</script>
+</body>
+</html>

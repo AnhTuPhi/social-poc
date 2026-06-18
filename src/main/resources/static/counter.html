@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sharded Counter POC</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a35;
+    --panel-2: #1a2347;
+    --text: #e6e8f0;
+    --muted: #9aa3c7;
+    --accent: #6c8cff;
+    --accent-2: #8b5cf6;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --border: #283063;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .topbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar h1 { margin: 0; font-size: 18px; }
+  .topbar a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .container { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+  }
+  .grid-3 {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  }
+  @media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr; } }
+  .strategy-card {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+  }
+  .strategy-card.NAIVE_ROW_LOCK { border-top: 4px solid var(--red); }
+  .strategy-card.SHARDED { border-top: 4px solid var(--green); }
+  .strategy-card.REDIS_FLUSH { border-top: 4px solid var(--accent); }
+  .strategy-card h3 { margin: 0 0 10px; font-size: 15px; }
+  .strategy-card .desc { font-size: 12px; color: var(--muted); margin-bottom: 14px; min-height: 36px; line-height: 1.45; }
+  .metric-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+  .metric-row span:first-child { color: var(--muted); }
+  .metric-row span:last-child { font-family: 'SF Mono', Consolas, monospace; font-weight: 600; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  label { color: var(--muted); font-size: 12px; }
+  input, select, button {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: #5577ff; }
+  button.danger { color: var(--red); }
+  button:hover { border-color: var(--accent); }
+  .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 14px; }
+  .result-stat {
+    background: var(--bg); padding: 12px; border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .result-stat .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .result-stat .val { font-size: 20px; font-weight: 700; margin-top: 4px; font-family: 'SF Mono', Consolas, monospace; }
+  .result-stat.good .val { color: var(--green); }
+  .result-stat.bad .val { color: var(--red); }
+  .bar-chart { margin-top: 20px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-row .label { width: 140px; font-size: 13px; }
+  .bar { flex: 1; height: 26px; background: var(--bg); border-radius: 6px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; transition: width .5s ease; display: flex; align-items: center; padding: 0 10px; font-size: 11px; font-weight: 700; color: #fff; }
+  .bar-fill.NAIVE_ROW_LOCK { background: linear-gradient(90deg, var(--red), #f87171cc); }
+  .bar-fill.SHARDED { background: linear-gradient(90deg, var(--green), #34d399cc); }
+  .bar-fill.REDIS_FLUSH { background: linear-gradient(90deg, var(--accent), #6c8cffcc); }
+  .help { font-size: 12px; color: var(--muted); padding: 12px; background: var(--bg); border-radius: 6px; line-height: 1.55; margin-top: 14px; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--panel-2); border: 1px solid var(--accent);
+    padding: 12px 16px; border-radius: 8px; font-size: 13px;
+    transition: opacity .3s;
+  }
+  .verdict { padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.55; margin-top: 16px; }
+  .verdict.good { background: rgba(52,211,153,.1); border: 1px solid var(--green); color: var(--green); }
+  .verdict.bad { background: rgba(248,113,113,.1); border: 1px solid var(--red); color: var(--red); }
+  .empty { color: var(--muted); text-align: center; padding: 30px 0; font-size: 13px; }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>🔥 Sharded Counter POC</h1>
+  <a href="/">← back to all POCs</a>
+</div>
+
+<div class="container">
+  <!-- Strategies overview -->
+  <div class="panel">
+    <h2>Three Strategies</h2>
+    <div class="grid-3" id="strategies"></div>
+    <div class="help">
+      <strong style="color:var(--text)">The hot-key problem:</strong> a viral post hits 10k likes/sec. A single DB row + per-row lock means
+      every increment queues behind the lock. Sharded counter spreads writes across N rows; sum on read. Redis-style holds the count
+      in memory and periodically flushes — fastest writes but small data-loss window if Redis dies before flush.
+    </div>
+  </div>
+
+  <!-- Load test -->
+  <div class="panel">
+    <h2>Run Load Test</h2>
+    <div class="row">
+      <label>Key</label>
+      <input id="key" value="post-viral-42" style="width: 200px;" />
+      <label>Threads</label>
+      <input id="threads" type="number" value="100" style="width: 80px;" />
+      <label>Incrs / thread</label>
+      <input id="iters" type="number" value="500" style="width: 80px;" />
+      <label>Strategy</label>
+      <select id="strategy">
+        <option value="SHARDED">SHARDED</option>
+        <option value="NAIVE_ROW_LOCK">NAIVE_ROW_LOCK</option>
+        <option value="REDIS_FLUSH">REDIS_FLUSH</option>
+      </select>
+      <button class="primary" onclick="runLoad()">▶ Run</button>
+      <button onclick="runAllThree()">▶ Run all three (compare)</button>
+      <button class="danger" onclick="resetAll()">Reset</button>
+    </div>
+    <div id="result"><div class="empty">No test run yet. Click Run.</div></div>
+    <div id="comparison"></div>
+  </div>
+
+  <!-- Live single-incr playground -->
+  <div class="panel">
+    <h2>Single Incr Playground</h2>
+    <div class="row">
+      <label>Key</label>
+      <input id="single-key" value="post-1" style="width: 160px;" />
+      <label>Δ</label>
+      <input id="single-delta" type="number" value="1" style="width: 70px;" />
+      <button onclick="incr('NAIVE_ROW_LOCK')">+ NAIVE</button>
+      <button onclick="incr('SHARDED')">+ SHARDED</button>
+      <button onclick="incr('REDIS_FLUSH')">+ REDIS</button>
+      <button onclick="readAll()">Read all 3</button>
+    </div>
+    <div id="single-result"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" style="display:none;"></div>
+
+<script>
+const META = {
+  NAIVE_ROW_LOCK: {
+    name: 'Naive (row lock)',
+    desc: 'Single row, single lock. Every writer queues. The death scenario.'
+  },
+  SHARDED: {
+    name: 'Sharded (32 shards)',
+    desc: 'Random shard per write. No contention. Sum 32 rows on read.'
+  },
+  REDIS_FLUSH: {
+    name: 'Redis INCR + flush',
+    desc: 'In-memory atomic counter. Async flush to DB every 1s.'
+  }
+};
+
+let lastResults = {};
+
+async function loadStrategies() {
+  const m = await (await fetch('/api/counter/metrics')).json();
+  const list = m.strategies;
+  document.getElementById('strategies').innerHTML = list.map(s => `
+    <div class="strategy-card ${s.strategy}">
+      <h3>${META[s.strategy].name}</h3>
+      <div class="desc">${META[s.strategy].desc}</div>
+      <div class="metric-row"><span>Total ops</span><span>${s.totalOps.toLocaleString()}</span></div>
+      <div class="metric-row"><span>Contentions</span><span style="color:${s.totalContentions > 0 ? 'var(--red)' : 'var(--green)'}">${s.totalContentions.toLocaleString()}</span></div>
+      <div class="metric-row"><span>Avg latency</span><span>${s.avgLatencyMicros.toFixed(1)} µs</span></div>
+      <div class="metric-row"><span>Persisted value</span><span>${s.persistedValue.toLocaleString()}</span></div>
+    </div>
+  `).join('');
+}
+
+async function runLoad() {
+  const req = {
+    key: document.getElementById('key').value,
+    threads: parseInt(document.getElementById('threads').value),
+    incrementsPerThread: parseInt(document.getElementById('iters').value),
+    strategy: document.getElementById('strategy').value
+  };
+  document.getElementById('result').innerHTML = '<div class="empty"><span class="pulse"></span>Running…</div>';
+  const r = await (await fetch('/api/counter/loadtest', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req)
+  })).json();
+  lastResults[r.strategy] = r;
+  renderResult(r);
+  loadStrategies();
+}
+
+async function runAllThree() {
+  const key = document.getElementById('key').value;
+  const threads = parseInt(document.getElementById('threads').value);
+  const iters = parseInt(document.getElementById('iters').value);
+  document.getElementById('result').innerHTML = '<div class="empty"><span class="pulse"></span>Running all three sequentially…</div>';
+  for (const s of ['NAIVE_ROW_LOCK', 'SHARDED', 'REDIS_FLUSH']) {
+    const req = { key: key + '-' + s, threads, incrementsPerThread: iters, strategy: s };
+    const r = await (await fetch('/api/counter/loadtest', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req)
+    })).json();
+    lastResults[s] = r;
+  }
+  document.getElementById('result').innerHTML = '<div class="empty">Compared all three — see chart below.</div>';
+  renderComparison();
+  loadStrategies();
+}
+
+function renderResult(r) {
+  document.getElementById('result').innerHTML = `
+    <div class="result-grid">
+      <div class="result-stat"><div class="lbl">Strategy</div><div class="val" style="font-size:14px;">${r.strategy}</div></div>
+      <div class="result-stat"><div class="lbl">Expected</div><div class="val">${r.expectedFinal.toLocaleString()}</div></div>
+      <div class="result-stat ${r.correct ? 'good' : 'bad'}"><div class="lbl">Actual</div><div class="val">${r.actualFinal.toLocaleString()}</div></div>
+      <div class="result-stat"><div class="lbl">Elapsed</div><div class="val">${r.elapsedMs} ms</div></div>
+      <div class="result-stat good"><div class="lbl">Ops/sec</div><div class="val">${Math.round(r.opsPerSec).toLocaleString()}</div></div>
+      <div class="result-stat"><div class="lbl">Avg latency</div><div class="val">${r.avgLatencyMicros.toFixed(1)} µs</div></div>
+      <div class="result-stat ${r.maxLatencyMicros > 1000 ? 'bad' : ''}"><div class="lbl">Max latency</div><div class="val">${r.maxLatencyMicros} µs</div></div>
+      <div class="result-stat ${r.contentionEvents > 0 ? 'bad' : 'good'}"><div class="lbl">Contentions</div><div class="val">${r.contentionEvents.toLocaleString()}</div></div>
+    </div>
+    <div class="verdict ${r.correct ? 'good' : 'bad'}">
+      ${r.correct ? '✓ Correct' : '✗ Lost updates'} — ${r.actualFinal.toLocaleString()} / ${r.expectedFinal.toLocaleString()}
+      ${r.strategy === 'REDIS_FLUSH' ? '· In-memory hot counter shown; persisted lags by ≤1s.' : ''}
+    </div>
+  `;
+}
+
+function renderComparison() {
+  const keys = Object.keys(lastResults);
+  if (keys.length < 2) { document.getElementById('comparison').innerHTML = ''; return; }
+  const maxOps = Math.max(...keys.map(k => lastResults[k].opsPerSec));
+  const maxLat = Math.max(...keys.map(k => lastResults[k].avgLatencyMicros));
+
+  document.getElementById('comparison').innerHTML = `
+    <h2 style="margin-top:24px;">Throughput (ops/sec — bigger is better)</h2>
+    <div class="bar-chart">
+      ${keys.map(k => {
+        const r = lastResults[k];
+        const pct = (r.opsPerSec / maxOps * 100).toFixed(0);
+        return `<div class="bar-row">
+          <div class="label">${META[k].name}</div>
+          <div class="bar"><div class="bar-fill ${k}" style="width:${pct}%">${Math.round(r.opsPerSec).toLocaleString()} ops/s</div></div>
+        </div>`;
+      }).join('')}
+    </div>
+    <h2 style="margin-top:24px;">Avg Latency (µs — smaller is better)</h2>
+    <div class="bar-chart">
+      ${keys.map(k => {
+        const r = lastResults[k];
+        const pct = (r.avgLatencyMicros / maxLat * 100).toFixed(0);
+        return `<div class="bar-row">
+          <div class="label">${META[k].name}</div>
+          <div class="bar"><div class="bar-fill ${k}" style="width:${Math.max(2, pct)}%">${r.avgLatencyMicros.toFixed(1)} µs</div></div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+async function incr(strategy) {
+  const req = { key: document.getElementById('single-key').value, delta: parseInt(document.getElementById('single-delta').value) };
+  const r = await (await fetch('/api/counter/incr?strategy=' + strategy, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req)
+  })).json();
+  toast(`${strategy}: new value = ${r.newValue}, latency ${r.latencyMicros}µs ${r.contended ? '⚠ contended' : ''}`);
+  readAll();
+  loadStrategies();
+}
+
+async function readAll() {
+  const key = document.getElementById('single-key').value;
+  const ps = ['NAIVE_ROW_LOCK', 'SHARDED', 'REDIS_FLUSH'].map(s =>
+    fetch(`/api/counter/value?key=${encodeURIComponent(key)}&strategy=${s}`).then(r => r.json())
+  );
+  const results = await Promise.all(ps);
+  document.getElementById('single-result').innerHTML = `
+    <div class="result-grid">
+      ${results.map(r => `
+        <div class="result-stat">
+          <div class="lbl">${r.strategy}</div>
+          <div class="val">${r.value.toLocaleString()}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function resetAll() {
+  if (!confirm('Reset all counter state?')) return;
+  await fetch('/api/counter/reset', { method: 'POST' });
+  lastResults = {};
+  document.getElementById('result').innerHTML = '<div class="empty">Reset done.</div>';
+  document.getElementById('comparison').innerHTML = '';
+  document.getElementById('single-result').innerHTML = '';
+  loadStrategies();
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.style.opacity = 1;
+  clearTimeout(window._tm);
+  window._tm = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.style.display='none', 300); }, 2400);
+}
+
+loadStrategies();
+setInterval(loadStrategies, 2000);
+</script>
+</body>
+</html>

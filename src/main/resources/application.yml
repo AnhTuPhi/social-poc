@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: social-pocs
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    static-path-pattern: /**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,info
+
+logging:
+  level:
+    com.example.social: INFO
