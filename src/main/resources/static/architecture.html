@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Architecture &amp; Flow — Social System Design POCs</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a35;
+    --panel-2: #1a2347;
+    --text: #e6e8f0;
+    --muted: #9aa3c7;
+    --accent: #6c8cff;
+    --accent-2: #8b5cf6;
+    --green: #34d399;
+    --orange: #fb923c;
+    --red: #f87171;
+    --border: #283063;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: radial-gradient(1200px 800px at 10% 0%, #1a235055 0%, transparent 60%),
+                radial-gradient(1000px 700px at 90% 30%, #6c8cff22 0%, transparent 50%),
+                var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .container { max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
+  a.back { color: var(--muted); text-decoration: none; font-size: 14px; }
+  a.back:hover { color: var(--accent); }
+  h1 {
+    font-size: 34px; margin: 12px 0 6px;
+    background: linear-gradient(120deg, #fff 0%, var(--accent) 60%, var(--accent-2) 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .sub { color: var(--muted); font-size: 16px; margin: 0 0 28px; }
+
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; border-bottom: 1px solid var(--border); padding-bottom: 14px; }
+  .tab {
+    padding: 10px 18px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600;
+    color: var(--muted); background: transparent; border: 1px solid transparent; transition: .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: #fff; background: linear-gradient(120deg, var(--accent) 0%, var(--accent-2) 100%); }
+
+  .view { display: none; animation: fade .25s ease; }
+  .view.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .card {
+    background: linear-gradient(155deg, var(--panel) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 20px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 22px; }
+  .card h3 { margin: 22px 0 10px; font-size: 16px; color: var(--accent); }
+  .card p { color: var(--text); line-height: 1.6; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .badge {
+    display: inline-block; font-size: 11px; padding: 4px 10px; border-radius: 999px;
+    background: rgba(108,140,255,.15); color: var(--accent); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px){ .cols { grid-template-columns: 1fr; } svg { max-width: 100%; } }
+
+  .pill { display:inline-block; font-size:12px; padding:3px 9px; border-radius:6px; font-family:'SF Mono',Consolas,monospace; }
+  .p-green { color: var(--green); background: rgba(52,211,153,.12); }
+  .p-red   { color: var(--red);   background: rgba(248,113,113,.12); }
+  .p-orange{ color: var(--orange);background: rgba(251,146,60,.12); }
+  .p-accent{ color: var(--accent);background: rgba(108,140,255,.12); }
+
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+  code { font-family: 'SF Mono', Consolas, monospace; background: rgba(255,255,255,.06); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+
+  .prob { border-left: 3px solid var(--red);   padding: 4px 0 4px 14px; margin: 12px 0; }
+  .sol  { border-left: 3px solid var(--green); padding: 4px 0 4px 14px; margin: 12px 0; }
+  .debt { border-left: 3px solid var(--orange);padding: 4px 0 4px 14px; margin: 12px 0; }
+  .prob b { color: var(--red); } .sol b { color: var(--green); } .debt b { color: var(--orange); }
+
+  ul { margin: 6px 0 12px; padding-left: 20px; line-height: 1.6; }
+  li { margin: 4px 0; }
+
+  .demo { background: rgba(0,0,0,.25); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 14px; }
+  .demo button {
+    font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); cursor: pointer; margin: 4px 6px 4px 0; transition:.15s;
+  }
+  .demo button:hover { border-color: var(--accent); }
+  .demo button.primary { background: linear-gradient(120deg, var(--accent) 0%, var(--accent-2) 100%); color:#fff; border:none; }
+  pre.out {
+    background: #070b18; border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 12px;
+    font-family: 'SF Mono', Consolas, monospace; font-size: 12.5px; color: var(--green); white-space: pre-wrap;
+    max-height: 260px; overflow: auto; min-height: 40px;
+  }
+  svg text { font-family: -apple-system, 'Segoe UI', sans-serif; }
+  .legend { font-size:12px; color:var(--muted); margin-top:6px; }
+  .kbd { font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="/">← Back to POCs</a>
+  <h1>Architecture &amp; Flow Explainer</h1>
+  <p class="sub">One pattern, three walls: <b>decouple the hot path from the expensive path.</b></p>
+
+  <div class="tabs">
+    <div class="tab active" data-view="overview">Overview</div>
+    <div class="tab" data-view="feed">#23 Feed Fan-Out</div>
+    <div class="tab" data-view="notify">#24 Notifications</div>
+    <div class="tab" data-view="counter">#25 Sharded Counter</div>
+    <div class="tab" data-view="scale">Scaling (k8s / VM)</div>
+  </div>
+
+  <!-- ================= OVERVIEW ================= -->
+  <div class="view active" id="overview">
+    <div class="card">
+      <h2>The common shape</h2>
+      <p>All three POCs solve the same class of problem: a few <b>hot entities</b> (a celebrity, a
+      viral post, a hot counter key) generate disproportionate work, and the naive read/write path
+      collapses. The fix is always to <b>decouple the cheap hot path from the expensive path.</b></p>
+      <table>
+        <tr><th>POC</th><th>Hot entity</th><th>Naive failure</th><th>Decoupling move</th></tr>
+        <tr><td><b>#23 Feed</b></td><td>Celebrity (180M followers)</td><td>1 post → 180M writes</td><td>push for normals, pull for celebs (hybrid)</td></tr>
+        <tr><td><b>#24 Notify</b></td><td>Popular post</td><td>50 likes → 50 buzzes</td><td>buffer + dedup + time-window batch</td></tr>
+        <tr><td><b>#25 Counter</b></td><td>Viral like counter</td><td>1 row, all writers serialize</td><td>shard writes / absorb in RAM, reconcile later</td></tr>
+      </table>
+      <p class="muted" style="margin-top:14px">Each POC lets you run the naive version, watch it fail in the live
+      metrics, then flip a strategy and watch it recover. Pick a tab above to walk the flow.</p>
+    </div>
+
+    <div class="card">
+      <h3>The trade each POC makes</h3>
+      <table>
+        <tr><th>POC</th><th>What we protect</th><th>Trade</th><th>Correctness model</th></tr>
+        <tr><td>#23</td><td>post latency (celebs) + read latency (everyone)</td><td>write cost ↔ read cost</td><td>eventually merged at read</td></tr>
+        <tr><td>#24</td><td>user attention + push cost</td><td>latency ↔ delivery volume</td><td>at-least-batched</td></tr>
+        <tr><td>#25</td><td>write throughput on one key</td><td>write speed ↔ read cost / durability</td><td>sum / eventually-persisted</td></tr>
+      </table>
+      <p class="muted" style="margin-top:14px">Everything is in-memory in one JVM — which is exactly what makes it
+      readable, and exactly what breaks on scale-out. See the <b>Scaling</b> tab.</p>
+    </div>
+  </div>
+
+  <!-- ================= FEED ================= -->
+  <div class="view" id="feed">
+    <div class="card">
+      <div class="badge">POC #23 · fan-out</div>
+      <h2>News Feed Fan-Out</h2>
+      <div class="prob"><b>Hard problem:</b> A celebrity post can't become 180M synchronous writes (push),
+        but a normal read can't become a fan-in over everyone you follow (pull). Optimizing one end breaks the other.</div>
+      <div class="sol"><b>Solution shape — Hybrid:</b> decide <i>per author</i>.
+        <span class="pill p-green">normal → PUSH</span> fan out to a small follower set at post time.
+        <span class="pill p-orange">celebrity → PULL</span> store once, merge into the reader's feed at read time.
+        Threshold: <code>followerCount ≥ 10,000</code>.</div>
+
+      <h3>Flow</h3>
+      <svg viewBox="0 0 900 320" width="100%">
+        <!-- PUSH lane -->
+        <text x="20" y="30" fill="#9aa3c7" font-size="13">PUSH (normal author) — write is expensive, read is O(1)</text>
+        <rect x="20" y="45" width="130" height="46" rx="8" fill="#1a2347" stroke="#283063"/>
+        <text x="85" y="73" fill="#e6e8f0" font-size="13" text-anchor="middle">Alice posts</text>
+        <line x1="150" y1="68" x2="220" y2="68" stroke="#6c8cff" stroke-width="2" marker-end="url(#a)"/>
+        <text x="185" y="60" fill="#34d399" font-size="11" text-anchor="middle">fan-out</text>
+        <rect x="220" y="30" width="150" height="30" rx="6" fill="#0e1530" stroke="#283063"/><text x="295" y="50" fill="#9aa3c7" font-size="12" text-anchor="middle">Bob's feed ←</text>
+        <rect x="220" y="66" width="150" height="30" rx="6" fill="#0e1530" stroke="#283063"/><text x="295" y="86" fill="#9aa3c7" font-size="12" text-anchor="middle">Carol's feed ←</text>
+        <rect x="220" y="102" width="150" height="30" rx="6" fill="#0e1530" stroke="#283063"/><text x="295" y="122" fill="#9aa3c7" font-size="12" text-anchor="middle">Fan #3's feed ←</text>
+        <line x1="380" y1="88" x2="450" y2="88" stroke="#34d399" stroke-width="2" marker-end="url(#a)"/>
+        <rect x="450" y="72" width="150" height="34" rx="8" fill="#132a1f" stroke="#34d399"/>
+        <text x="525" y="94" fill="#34d399" font-size="12" text-anchor="middle">read = copy deque</text>
+
+        <!-- PULL lane -->
+        <text x="20" y="190" fill="#9aa3c7" font-size="13">PULL (celebrity author) — write is O(1), read merges</text>
+        <rect x="20" y="205" width="130" height="46" rx="8" fill="#1a2347" stroke="#283063"/>
+        <text x="85" y="233" fill="#e6e8f0" font-size="13" text-anchor="middle">Taylor posts</text>
+        <line x1="150" y1="228" x2="220" y2="228" stroke="#fb923c" stroke-width="2" marker-end="url(#a)"/>
+        <text x="185" y="220" fill="#fb923c" font-size="11" text-anchor="middle">store once</text>
+        <rect x="220" y="211" width="160" height="34" rx="8" fill="#2a1f13" stroke="#fb923c"/>
+        <text x="300" y="233" fill="#fb923c" font-size="12" text-anchor="middle">authorPosts[Taylor]</text>
+        <line x1="380" y1="228" x2="470" y2="228" stroke="#6c8cff" stroke-width="2" marker-end="url(#a)"/>
+        <text x="425" y="220" fill="#6c8cff" font-size="11" text-anchor="middle">at read</text>
+        <rect x="470" y="205" width="200" height="46" rx="8" fill="#132a1f" stroke="#34d399"/>
+        <text x="570" y="227" fill="#34d399" font-size="12" text-anchor="middle">merge celeb pulls +</text>
+        <text x="570" y="243" fill="#34d399" font-size="12" text-anchor="middle">pushed feed → sort → top 50</text>
+        <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b8fb5"/></marker></defs>
+      </svg>
+      <div class="legend">Hybrid read does both at once: take the precomputed deque (from normal authors' pushes) and merge celebrity pulls, then sort + trim to 50.</div>
+
+      <h3>Key tech by responsibility</h3>
+      <table>
+        <tr><th>Responsibility</th><th>Mechanism</th></tr>
+        <tr><td>Precomputed timeline (push target)</td><td><code>Map&lt;Long, Deque&lt;FeedItem&gt;&gt;</code>, capped at 50</td></tr>
+        <tr><td>Follower / following graph</td><td><code>ConcurrentHashMap.newKeySet()</code></td></tr>
+        <tr><td>Celebrity classification</td><td><code>followerCount ≥ CELEBRITY_THRESHOLD</code></td></tr>
+        <tr><td>Cost visibility</td><td><code>AtomicLong</code> pushWrites / pullMerges / latency</td></tr>
+      </table>
+
+      <div class="debt"><b>Tech debt:</b> fan-out is synchronous in-request (no queue); graph + feeds in one heap;
+        no ranking (strict reverse-chron); threshold is one global constant.</div>
+
+      <div class="demo">
+        <b>Live demo</b> <span class="kbd">— hits the real <code>/api/feed</code></span>
+        <div style="margin-top:10px">
+          <button class="primary" onclick="feedSim()">Simulate 20 hybrid posts</button>
+          <button onclick="feedMetrics()">Show metrics</button>
+        </div>
+        <pre class="out" id="feedOut">Click a button to run against the live service…</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= NOTIFY ================= -->
+  <div class="view" id="notify">
+    <div class="card">
+      <div class="badge">POC #24 · dedup + batch</div>
+      <h2>Notification Engine</h2>
+      <div class="prob"><b>Hard problem:</b> 50 likes in 5 minutes must become <b>one</b> notification — while
+        respecting quiet hours, multiple channels with per-user prefs, and collapsing true duplicates.</div>
+      <div class="sol"><b>Solution shape:</b> never deliver on ingest.
+        <span class="pill p-accent">buffer</span> →
+        <span class="pill p-accent">dedup key</span> →
+        <span class="pill p-accent">time-window batch</span> →
+        <span class="pill p-green">deliver per channel</span>.
+        A <code>@Scheduled(1s)</code> flusher delivers only batches older than the user's window.</div>
+
+      <h3>Flow</h3>
+      <svg viewBox="0 0 900 260" width="100%">
+        <rect x="20" y="30" width="150" height="150" rx="10" fill="#1a2347" stroke="#283063"/>
+        <text x="95" y="52" fill="#e6e8f0" font-size="13" text-anchor="middle">50 LIKE events</text>
+        <text x="95" y="72" fill="#9aa3c7" font-size="11" text-anchor="middle">same post-123</text>
+        <text x="95" y="110" fill="#9aa3c7" font-size="26" text-anchor="middle">↓ ↓ ↓</text>
+        <text x="95" y="160" fill="#9aa3c7" font-size="11" text-anchor="middle">actors: user_0..7</text>
+
+        <line x1="170" y1="105" x2="235" y2="105" stroke="#6c8cff" stroke-width="2" marker-end="url(#b)"/>
+        <text x="202" y="97" fill="#6c8cff" font-size="10" text-anchor="middle">key=</text>
+        <text x="202" y="122" fill="#6c8cff" font-size="10" text-anchor="middle">LIKE:123</text>
+
+        <rect x="235" y="60" width="200" height="90" rx="10" fill="#0e1530" stroke="#6c8cff"/>
+        <text x="335" y="84" fill="#e6e8f0" font-size="13" text-anchor="middle">PendingBatch</text>
+        <text x="335" y="106" fill="#34d399" font-size="14" text-anchor="middle">count = 50</text>
+        <text x="335" y="126" fill="#9aa3c7" font-size="11" text-anchor="middle">actorNames = {8 unique}</text>
+
+        <line x1="435" y1="105" x2="500" y2="105" stroke="#fb923c" stroke-width="2" marker-end="url(#b)"/>
+        <text x="467" y="97" fill="#fb923c" font-size="10" text-anchor="middle">age &gt;</text>
+        <text x="467" y="122" fill="#fb923c" font-size="10" text-anchor="middle">window</text>
+
+        <rect x="500" y="45" width="180" height="120" rx="10" fill="#132a1f" stroke="#34d399"/>
+        <text x="590" y="68" fill="#34d399" font-size="12" text-anchor="middle">deliver per channel</text>
+        <text x="590" y="92" fill="#e6e8f0" font-size="11" text-anchor="middle">PUSH (unless quiet)</text>
+        <text x="590" y="112" fill="#e6e8f0" font-size="11" text-anchor="middle">EMAIL</text>
+        <text x="590" y="132" fill="#e6e8f0" font-size="11" text-anchor="middle">IN_APP</text>
+        <text x="590" y="154" fill="#9aa3c7" font-size="10" text-anchor="middle">"Alice + 49 others liked"</text>
+        <defs><marker id="b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b8fb5"/></marker></defs>
+      </svg>
+      <div class="legend">Dedup key: <code>LIKE/COMMENT/MENTION → :targetId</code>, <code>FOLLOW → :self</code>, <code>SYSTEM → random (never deduped)</code>.</div>
+
+      <h3>How each sub-problem is solved</h3>
+      <table>
+        <tr><th>Sub-problem</th><th>Mechanism</th></tr>
+        <tr><td>Notification storm</td><td>50 events → 1 dedup key → 1 batch → 1 delivery/channel</td></tr>
+        <tr><td>True duplicates</td><td>same key <code>merge()</code>s (bumps count, unions actors)</td></tr>
+        <tr><td>Timing</td><td>flush only when <code>firstSeen</code> older than <code>batchWindowMs</code></td></tr>
+        <tr><td>Do-not-disturb</td><td>PUSH in quiet hours → <code>SUPPRESSED_QUIET_HOURS</code> (email/in-app still go)</td></tr>
+        <tr><td>Per-user control</td><td><code>PUT /prefs</code> — channels, quiet window, batch window, live</td></tr>
+      </table>
+
+      <div class="debt"><b>Tech debt:</b> suppressed pushes are dropped not deferred; flusher scans whole buffer each second (O(users×keys));
+        quiet hours use server timezone; no durability/retries/receipts.</div>
+
+      <div class="demo">
+        <b>Live demo</b> <span class="kbd">— hits the real <code>/api/notify</code></span>
+        <div style="margin-top:10px">
+          <button class="primary" onclick="notifyBurst()">Burst 50 likes → watch collapse</button>
+          <button onclick="notifyBuffer()">Show buffer (pre-flush)</button>
+          <button onclick="notifyMetrics()">Show metrics</button>
+        </div>
+        <pre class="out" id="notifyOut">Burst 50, then peek the buffer within ~5s to see 50 collapsed into 1 batch…</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= COUNTER ================= -->
+  <div class="view" id="counter">
+    <div class="card">
+      <div class="badge">POC #25 · hot-key contention</div>
+      <h2>Sharded Counter</h2>
+      <div class="prob"><b>Hard problem:</b> thousands of concurrent increments to one hot key serialize behind a single
+        lock/row. Throughput collapses to single-writer speed on an otherwise idle box.</div>
+      <div class="sol"><b>Solution shape — three strategies, load-tested with virtual threads:</b>
+        <span class="pill p-red">NAIVE_ROW_LOCK</span> the anti-pattern (measures its own contention),
+        <span class="pill p-accent">SHARDED</span> 32 <code>AtomicLong</code> shards, sum on read,
+        <span class="pill p-green">REDIS_FLUSH</span> hot in-RAM counter + <code>@Scheduled(1s)</code> write-behind.</div>
+
+      <h3>Flow</h3>
+      <svg viewBox="0 0 900 280" width="100%">
+        <text x="20" y="26" fill="#f87171" font-size="13">NAIVE — 1 lock, writers queue</text>
+        <text x="20" y="120" fill="#6c8cff" font-size="13">SHARDED — random shard, sum on read</text>
+        <text x="20" y="210" fill="#34d399" font-size="13">REDIS_FLUSH — absorb hot, flush slow</text>
+
+        <!-- naive -->
+        <text x="40" y="60" fill="#9aa3c7" font-size="22">≡≡≡</text>
+        <line x1="95" y1="52" x2="150" y2="52" stroke="#f87171" stroke-width="2" marker-end="url(#c)"/>
+        <rect x="150" y="38" width="70" height="28" rx="6" fill="#2a1315" stroke="#f87171"/><text x="185" y="57" fill="#f87171" font-size="11" text-anchor="middle">🔒 row</text>
+        <text x="235" y="57" fill="#9aa3c7" font-size="12">serialized → contention ↑</text>
+
+        <!-- sharded -->
+        <text x="40" y="152" fill="#9aa3c7" font-size="22">≡≡≡</text>
+        <line x1="95" y1="145" x2="150" y2="145" stroke="#6c8cff" stroke-width="2" marker-end="url(#c)"/>
+        <rect x="150" y="130" width="34" height="26" rx="5" fill="#0e1530" stroke="#6c8cff"/><text x="167" y="148" fill="#6c8cff" font-size="11" text-anchor="middle">s0</text>
+        <rect x="190" y="130" width="34" height="26" rx="5" fill="#0e1530" stroke="#6c8cff"/><text x="207" y="148" fill="#6c8cff" font-size="11" text-anchor="middle">s1</text>
+        <rect x="230" y="130" width="34" height="26" rx="5" fill="#0e1530" stroke="#6c8cff"/><text x="247" y="148" fill="#6c8cff" font-size="11" text-anchor="middle">…</text>
+        <rect x="270" y="130" width="46" height="26" rx="5" fill="#0e1530" stroke="#6c8cff"/><text x="293" y="148" fill="#6c8cff" font-size="11" text-anchor="middle">s31</text>
+        <line x1="320" y1="143" x2="370" y2="143" stroke="#34d399" stroke-width="2" marker-end="url(#c)"/>
+        <text x="440" y="148" fill="#9aa3c7" font-size="12" text-anchor="middle">read = Σ shards</text>
+
+        <!-- redis -->
+        <text x="40" y="242" fill="#9aa3c7" font-size="22">≡≡≡</text>
+        <line x1="95" y1="235" x2="150" y2="235" stroke="#34d399" stroke-width="2" marker-end="url(#c)"/>
+        <rect x="150" y="220" width="120" height="30" rx="6" fill="#132a1f" stroke="#34d399"/><text x="210" y="240" fill="#34d399" font-size="11" text-anchor="middle">hot AtomicLong</text>
+        <line x1="270" y1="235" x2="330" y2="235" stroke="#fb923c" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#c)"/>
+        <text x="300" y="228" fill="#fb923c" font-size="10" text-anchor="middle">1s</text>
+        <rect x="330" y="220" width="130" height="30" rx="6" fill="#2a1f13" stroke="#fb923c"/><text x="395" y="240" fill="#fb923c" font-size="11" text-anchor="middle">persisted (DB)</text>
+        <text x="480" y="240" fill="#9aa3c7" font-size="12">read = max(hot, persisted)</text>
+        <defs><marker id="c" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b8fb5"/></marker></defs>
+      </svg>
+
+      <h3>Key tech by responsibility</h3>
+      <table>
+        <tr><th>Responsibility</th><th>Mechanism</th></tr>
+        <tr><td>Serialize (anti-pattern)</td><td><code>ReentrantLock</code> per key + <code>busyMicros(5)</code></td></tr>
+        <tr><td>Detect contention</td><td><code>lock.isLocked()</code> before acquire → counter</td></tr>
+        <tr><td>Scale writes</td><td>32 <code>AtomicLong</code> shards, <code>ThreadLocalRandom</code> pick</td></tr>
+        <tr><td>Absorb hot / durable-ish</td><td>hot <code>AtomicLong</code> + <code>@Scheduled</code> flush to persisted</td></tr>
+        <tr><td>Read-your-writes (hot)</td><td><code>read = max(hot, persisted)</code></td></tr>
+        <tr><td>Prove under load</td><td>virtual-thread pool + <code>CountDownLatch</code> start gate</td></tr>
+      </table>
+
+      <div class="debt"><b>Tech debt:</b> "Redis"/"DB" are JVM AtomicLongs (single-process only); <code>busyMicros</code> understates real IO;
+        REDIS_FLUSH loses ≤1s of increments on crash; SHARDED returns <code>-1</code> on incr (must GET to sum).</div>
+
+      <div class="demo">
+        <b>Live demo</b> <span class="kbd">— hits the real <code>/api/counter</code>, 64 virtual threads × 500 incr</span>
+        <div style="margin-top:10px">
+          <button onclick="counterLoad('NAIVE_ROW_LOCK')">Load-test NAIVE</button>
+          <button onclick="counterLoad('SHARDED')">Load-test SHARDED</button>
+          <button class="primary" onclick="counterLoad('REDIS_FLUSH')">Load-test REDIS_FLUSH</button>
+        </div>
+        <pre class="out" id="counterOut">Run each strategy and compare ops/sec + contention. NAIVE should be slowest with contention &gt; 0…</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SCALE ================= -->
+  <div class="view" id="scale">
+    <div class="card">
+      <h2>What breaks when you scale out</h2>
+      <p>Every POC is single-process and in-memory <b>on purpose</b>. The correctness you see is an artifact of one
+      instance. Scale to <code>--replicas=3</code> (or two VMs behind a load balancer) and most of it silently breaks.</p>
+
+      <svg viewBox="0 0 900 230" width="100%">
+        <rect x="40" y="95" width="90" height="40" rx="8" fill="#1a2347" stroke="#283063"/><text x="85" y="120" fill="#e6e8f0" font-size="13" text-anchor="middle">Load Balancer</text>
+        <line x1="130" y1="115" x2="230" y2="50" stroke="#6c8cff" stroke-width="2" marker-end="url(#d)"/>
+        <line x1="130" y1="115" x2="230" y2="115" stroke="#6c8cff" stroke-width="2" marker-end="url(#d)"/>
+        <line x1="130" y1="115" x2="230" y2="180" stroke="#6c8cff" stroke-width="2" marker-end="url(#d)"/>
+        <rect x="230" y="28" width="220" height="44" rx="8" fill="#0e1530" stroke="#283063"/><text x="340" y="47" fill="#e6e8f0" font-size="12" text-anchor="middle">pod A heap</text><text x="340" y="63" fill="#9aa3c7" font-size="11" text-anchor="middle">userFeeds / buffer / hotCounters</text>
+        <rect x="230" y="93" width="220" height="44" rx="8" fill="#0e1530" stroke="#283063"/><text x="340" y="112" fill="#e6e8f0" font-size="12" text-anchor="middle">pod B heap</text><text x="340" y="128" fill="#f87171" font-size="11" text-anchor="middle">different data ✗</text>
+        <rect x="230" y="158" width="220" height="44" rx="8" fill="#0e1530" stroke="#283063"/><text x="340" y="177" fill="#e6e8f0" font-size="12" text-anchor="middle">pod C heap</text><text x="340" y="193" fill="#f87171" font-size="11" text-anchor="middle">+ its own @Scheduled flush ✗</text>
+        <defs><marker id="d" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8b8fb5"/></marker></defs>
+      </svg>
+      <div class="legend">Two sharp edges: (1) each pod has its own heap → reads miss writes from other pods; (2) <code>@Scheduled</code> fires on <b>every</b> replica → duplicated side-effects.</div>
+
+      <h3>The two legitimate fixes (pick one per piece of state)</h3>
+      <table>
+        <tr><th>Fix</th><th>Idea</th><th>Result</th></tr>
+        <tr><td><span class="pill p-green">Externalize</span></td><td>move state to a shared store (Redis / DB / Kafka log)</td><td>pods stay symmetric &amp; stateless</td></tr>
+        <tr><td><span class="pill p-accent">Partition</span></td><td>one owner pod per key (consistent hash / Kafka partition / sticky)</td><td>state stays in-heap, never duplicated</td></tr>
+      </table>
+
+      <h3>Per-POC scale-out</h3>
+      <table>
+        <tr><th></th><th>#23 Feed</th><th>#24 Notify</th><th>#25 Counter</th></tr>
+        <tr><td><b>Breaks</b></td><td>feeds/graph per-pod; push writes into one heap only</td><td>dedup degrades to ~#pods; flusher runs per-pod; prefs diverge</td><td>JVM lock ≠ cross-pod; per-pod shards/hot; each flush clobbers <code>.set()</code></td></tr>
+        <tr><td><b>Fix</b></td><td>timelines→Redis/Cassandra; fan-out async via <b>Kafka</b></td><td><b>partition by userId (Kafka)</b> or Redis buffer + leader flush</td><td><b>real Redis <code>INCR</code></b> + single-owner write-behind</td></tr>
+        <tr><td><b>Routing</b></td><td>any pod (after externalize)</td><td>sticky / partitioned by user</td><td>any pod (Redis is source of truth)</td></tr>
+        <tr><td><b>Consistency</b></td><td>eventual (fan-out lag)</td><td>per-user ordered, eventual batch</td><td>strong per key, eventual DB</td></tr>
+      </table>
+
+      <h3>The three rules it reduces to</h3>
+      <ul>
+        <li><b>State out of the heap, or one owner per key.</b> Never replicate the process <i>and</i> keep authoritative state inside it.</li>
+        <li><b>A <code>@Scheduled</code> job in a replicated deployment runs N times.</b> Guard every background job with partition-ownership or leader election.</li>
+        <li><b>Match routing to the aggregation boundary.</b> If correctness needs all events for a key to meet, route them to meet — round-robin is only safe for stateless work.</li>
+      </ul>
+      <p class="muted">Full detail in <a href="/" onclick="return true" style="color:var(--accent)">CONSISTENCY.md</a> in the repo root.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // --- tabs ---
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.view).classList.add('active');
+  }));
+
+  const show = (id, data) => { document.getElementById(id).textContent =
+    typeof data === 'string' ? data : JSON.stringify(data, null, 2); };
+  const fail = (id, e) => show(id, '⚠ ' + e + '\n(Is the app running? mvn spring-boot:run)');
+
+  // --- feed ---
+  async function feedSim(){ try { show('feedOut','running…');
+    const r = await fetch('/api/feed/simulate?posts=20',{method:'POST'}); show('feedOut', await r.json()); }
+    catch(e){ fail('feedOut', e); } }
+  async function feedMetrics(){ try {
+    const r = await fetch('/api/feed/metrics'); show('feedOut', await r.json()); } catch(e){ fail('feedOut', e); } }
+
+  // --- notify ---
+  async function notifyBurst(){ try { show('notifyOut','bursting 50 likes for alice…');
+    const r = await fetch('/api/notify/burst?userId=alice&count=50&category=LIKE',{method:'POST'});
+    const j = await r.json(); show('notifyOut', JSON.stringify(j, null, 2) + '\n\nNow click "Show buffer" within ~5s.'); }
+    catch(e){ fail('notifyOut', e); } }
+  async function notifyBuffer(){ try {
+    const r = await fetch('/api/notify/buffer'); const j = await r.json();
+    show('notifyOut', (j.length? '50 events collapsed into '+j.length+' pending batch(es):\n\n':'buffer empty (already flushed — burst again then peek faster)\n\n') + JSON.stringify(j, null, 2)); }
+    catch(e){ fail('notifyOut', e); } }
+  async function notifyMetrics(){ try {
+    const r = await fetch('/api/notify/metrics'); show('notifyOut', await r.json()); } catch(e){ fail('notifyOut', e); } }
+
+  // --- counter ---
+  async function counterLoad(strategy){ const id='counterOut'; try {
+    show(id, 'load-testing '+strategy+' (64 threads × 500)…');
+    const r = await fetch('/api/counter/loadtest',{ method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ key:'viral-post', threads:64, incrementsPerThread:500, strategy }) });
+    const j = await r.json();
+    show(id, strategy+':\n'+
+      '  ops/sec        : '+Math.round(j.opsPerSec).toLocaleString()+'\n'+
+      '  avg latency µs : '+j.avgLatencyMicros.toFixed(1)+'\n'+
+      '  max latency µs : '+j.maxLatencyMicros+'\n'+
+      '  contention     : '+j.contentionEvents+'\n'+
+      '  expected/actual: '+j.expectedFinal+' / '+j.actualFinal+'\n'+
+      '  correct        : '+j.correct); }
+    catch(e){ fail(id, e); } }
+</script>
+</body>
+</html>

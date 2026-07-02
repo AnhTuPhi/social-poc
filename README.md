@@ -1,12 +1,25 @@
 # Social System Design POCs
 
-Three live POCs in one Spring Boot 3.4 / Java 21 app:
+Three live POCs in one Spring Boot 3.4 / Java 21 app. Each isolates one classic social-scale
+wall, lets you **watch the naive version fail**, then flip a strategy and watch the metrics
+recover.
 
 | POC | Pattern | URL |
 |---|---|---|
 | **#23 News Feed Fan-Out** | push / pull / hybrid | `/feed.html` |
 | **#24 Notification Engine** | dedup key + time-window batching + quiet hours + multi-channel | `/notification.html` |
 | **#25 Sharded Counter** | naive row-lock vs N-shard vs Redis-INCR + async flush | `/counter.html` |
+
+All three are the same underlying move: **decouple the hot path from the expensive path.**
+
+## Documentation
+
+| Doc | What's in it |
+|---|---|
+| [ISSUE.md](ISSUE.md) | The problem each POC solves, what we're protecting, and why they live in one repo |
+| [TECHNICAL.md](TECHNICAL.md) | Hard problem → solution shape → key tech by responsibility → tech debt, per POC |
+| [CONSISTENCY.md](CONSISTENCY.md) | What breaks when you scale to multiple k8s pods / VMs, and the real fix |
+| [`/architecture.html`](src/main/resources/static/architecture.html) | Interactive visual explainer of all three flows + scaling |
 
 ## Run
 
@@ -15,7 +28,8 @@ cd social-pocs
 mvn spring-boot:run
 ```
 
-Open <http://localhost:8080/>.
+Open <http://localhost:8080/> — the landing page links to each POC and to the
+**Architecture** explainer.
 
 ## Key APIs
 
